@@ -49,9 +49,12 @@ export async function readTaken(file) {
 export function currentPosition(timeout = 8000) {
   return new Promise(resolve => {
     if (!navigator.geolocation) return resolve(null);
+    // iOS sometimes never calls back at all (its own timeout doesn't cover a
+    // pending permission prompt), so give up ourselves too.
+    const cap = setTimeout(() => resolve(null), timeout + 2000);
     navigator.geolocation.getCurrentPosition(
-      p => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }),
-      () => resolve(null),
+      p => { clearTimeout(cap); resolve({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }); },
+      () => { clearTimeout(cap); resolve(null); },
       { enableHighAccuracy: true, timeout, maximumAge: 30000 });
   });
 }

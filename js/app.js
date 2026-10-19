@@ -321,7 +321,8 @@ async function addPhotos(camera) {
   if (!files.length) return;
   const ins = app.ins;
   const pr = progress('Adding photos');
-  let fallback, added = 0;
+  let fix = null, added = 0;
+  const late = [];
   try {
     for (let i = 0; i < files.length; i++) {
       pr.set(i + 1, files.length);
@@ -332,8 +333,10 @@ async function addPhotos(camera) {
       if (!gps && settings.get('gpsFallback', true)) {
         // Camera captures on iPhone usually arrive without location metadata,
         // so take the device's current position instead.
-        if (fallback === undefined) { pr.set(i + 1, files.length, '– getting location…'); fallback = await currentPosition(); }
-        gps = fallback;
+        // Wait briefly, then save the photo anyway and add the location when it arrives.
+        if (!fix) { pr.set(i + 1, files.length, '– getting location…'); fix = currentPosition(15000); }
+        gps = await Promise.race([fix, new Promise(r => setTimeout(r, 3000, undefined))]);
+        if (gps === undefined) { gps = null; late.push(id); }
       }
       const taken = (await readTaken(file)) || (camera ? Date.now() : file.lastModified) || Date.now();
       const th = await resizeToJpeg(file, 480, 0.8);
@@ -351,6 +354,20 @@ async function addPhotos(camera) {
   renderInspection();
   if (added === 1 && files.length === 1) editPhoto(ins.photos.length - 1, { justAdded: true });
   else if (added) toast(`${added} photo${added === 1 ? '' : 's'} added`);
+  if (late.length) fix.then(g => addLateLocation(ins.id, late, g));
+}
+
+async function addLateLocation(insId, ids, g) {
+  if (!g) return toast('Location unavailable – photo saved without it. Check Location Services for Safari Websites.', 5000);
+  // Patch whichever copy is live: the open inspection, or the saved one if the user has moved on.
+  const ins = app.ins && app.ins.id === insId ? app.ins : await readJSON(insMeta(insId));
+  if (!ins) return;
+  let n = 0;
+  for (const p of ins.photos) if (ids.includes(p.id) && p.lat == null) { p.lat = g.lat; p.lng = g.lng; p.gpsSource = 'device'; n++; }
+  if (!n) return;
+  await saveInspection(ins);
+  for (const el of document.querySelectorAll('[data-loc]')) if (ids.includes(el.dataset.loc) && el.firstChild) el.firstChild.nodeValue = `${g.lat.toFixed(6)}, ${g.lng.toFixed(6)} (device location)`;
+  toast('Location added');
 }
 
 async function sortByElement() {
@@ -408,7 +425,7 @@ async function editPhoto(index, { justAdded = false } = {}) {
         h('label', { class: 'fld' }, h('span', {}, 'Element'), elSel),
         h('label', { class: 'fld' }, h('span', {}, 'Defect category'), dfSel),
         h('label', { class: 'fld' }, h('span', {}, 'Description'), cap),
-        h('div', { class: 'fld' }, h('span', {}, 'Location'), h('div', { class: 'kv' }, gpsTxt,
+        h('div', { class: 'fld' }, h('span', {}, 'Location'), h('div', { class: 'kv', 'data-loc': p.id }, gpsTxt,
           h('button', { class: 'link', onclick: async () => { const g = await currentPosition(); if (!g) return toast('Location unavailable'); p.lat = g.lat; p.lng = g.lng; p.gpsSource = 'device'; await commit(); draw(); } }, 'Use current'),
           p.lat != null ? h('button', { class: 'link', onclick: async () => { p.lat = p.lng = null; p.gpsSource = null; await commit(); draw(); } }, 'Clear') : null)),
         h('div', { class: 'fld' }, h('span', {}, 'Plan location'), h('div', { class: 'kv' }, planTxt,
