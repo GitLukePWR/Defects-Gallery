@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0f1a45"/>
+      <stop offset="0.55" stop-color="#123a5c"/>
+      <stop offset="1" stop-color="#0f5f66"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="1" r="0.6">
+      <stop offset="0" stop-color="#1a8f86" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#1a8f86" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <rect width="1024" height="1024" fill="url(#glow)"/>
+  <g fill="none" stroke="#fff" stroke-linecap="butt">
+    <circle cx="512" cy="512" r="248" stroke-width="34"/>
+    <!-- survey ticks: cross the ring, stop short of the centre -->
+    <path d="M512 196V344M512 680V828M196 512H344M680 512H828" stroke-width="30"/>
+    <!-- broken inner ring, gaps on the diagonal -->
+    <path d="M427.9 395.8A125 125 0 0 1 628.2 427.9M596.1 628.2A125 125 0 0 1 395.8 596.1" stroke-width="30"/>
+  </g>
+  <circle cx="512" cy="512" r="24" fill="#fff"/>
+</svg>

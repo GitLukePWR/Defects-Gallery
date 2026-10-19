@@ -1,4 +1,6 @@
-# SpanCheck – offline inspection photo organiser
+# Survport – Structural Survey Reporting
+
+*Survey + Report.*
 
 A home-screen web app for bridge and structural inspections. Photos, plan
 drawings and records are stored as files in a **private folder on the device**
@@ -53,6 +55,12 @@ to GitHub – only the app's code is hosted there.
 - The folder is private to the app, so it doesn't appear in the Files app;
   use Export to move anything out.
 - Private Browsing blocks on-device storage.
+
+## Taking photos
+After each camera shot the photo opens with a green "saved" banner: it's
+already stored in the inspection, and element, category and description save
+as you type. Tap **Done** to go back to the list, or **Take next** to go
+straight back to the camera.
 
 ## Updating
 Change `VERSION` in `sw.js` whenever you change any file, so installed copies

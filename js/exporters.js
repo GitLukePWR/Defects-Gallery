@@ -312,7 +312,7 @@ export async function exportZip(ins, progress) {
   const zip = new window.JSZip();
   const base = insDir(ins.id);
   zip.file('inspection.json', JSON.stringify(ins, null, 2));
-  zip.file('FORMAT.txt', 'SpanCheck inspection package. inspection.json holds all records; photos/, thumbs/ and plans/ hold the files it references.');
+  zip.file('FORMAT.txt', 'Survport inspection package. inspection.json holds all records; photos/, thumbs/ and plans/ hold the files it references.');
   let k = 0; const total = ins.photos.length * 2 + ins.plans.length;
   for (const p of ins.photos) {
     for (const sub of ['photos', 'thumbs']) {
@@ -336,6 +336,9 @@ export async function importZip(file, progress) {
   if (!metaFile) throw new Error('Not an inspection package (inspection.json missing)');
   const ins = JSON.parse(await metaFile.async('string'));
   if (!Array.isArray(ins.photos) || !Array.isArray(ins.plans)) throw new Error('Package is damaged');
+  // File names become storage paths, so only accept the plain names the app writes.
+  const okName = (n) => typeof n === 'string' && /^[\w-]+\.[a-z0-9]+$/i.test(n);
+  if (![...ins.photos.flatMap(p => [p.file, p.thumb]), ...ins.plans.map(p => p.file)].every(okName)) throw new Error('Package is damaged');
   ins.id = uid();
   const base = insDir(ins.id);
   const entries = Object.values(zip.files).filter(f => !f.dir && /^(photos|thumbs|plans)\/[^/]+$/.test(f.name));

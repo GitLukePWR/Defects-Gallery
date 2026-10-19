@@ -98,6 +98,7 @@ const idb = {
   db: null,
   init() {
     return new Promise((res, rej) => {
+      // Original database name kept so existing data still loads.
       const r = indexedDB.open('spancheck', 1);
       r.onupgradeneeded = () => r.result.createObjectStore('files');
       r.onsuccess = () => { this.db = r.result; res(); };

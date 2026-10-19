@@ -21,7 +21,7 @@ function h(tag, attrs = {}, ...kids) {
   return el;
 }
 const fmtDate = (t) => t ? new Date(t).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : '';
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => new Date().toLocaleDateString('en-CA'); // local YYYY-MM-DD
 
 function toast(msg, ms = 2600) {
   const t = h('div', { class: 'toast' }, msg);
@@ -41,12 +41,15 @@ function progress(label) {
   };
 }
 
-function sheet(title, content, { full = false, onClose } = {}) {
-  const close = () => { ov.remove(); onClose && onClose(); };
-  const ov = h('div', { class: 'overlay sheet-ov', onclick: (e) => { if (e.target === ov) close(); } },
+// backdrop: false stops a stray tap outside a form from throwing away what was typed.
+function sheet(title, content, { full = false, onClose, backdrop = true, footer = null } = {}) {
+  let closed = false;
+  const close = () => { if (closed) return; closed = true; ov.remove(); onClose && onClose(); };
+  const ov = h('div', { class: 'overlay sheet-ov', onclick: (e) => { if (backdrop && e.target === ov) close(); } },
     h('div', { class: 'sheet' + (full ? ' full' : '') },
       h('div', { class: 'sheet-hd' }, h('h2', {}, title), h('button', { class: 'icon-btn', 'aria-label': 'Close', onclick: close }, '✕')),
-      h('div', { class: 'sheet-bd' }, content)));
+      h('div', { class: 'sheet-bd' }, content),
+      footer));
   document.body.append(ov);
   return { close, el: ov };
 }
@@ -139,7 +142,7 @@ async function renderGallery() {
   root.innerHTML = '';
   const list = await listInspections();
   const top = h('header', { class: 'bar' },
-    h('div', { class: 'brand' }, h('img', { src: 'icons/icon-192.png', alt: '' }), h('span', {}, 'SpanCheck')),
+    h('div', { class: 'brand' }, h('img', { src: 'icons/logo.svg', alt: '' }), h('span', { class: 'brand-txt' }, 'Survport', h('small', {}, 'Structural Survey Reporting'))),
     h('button', { class: 'icon-btn', 'aria-label': 'Storage and privacy', onclick: openSettings }, '⚙︎'));
   const actions = h('div', { class: 'row-btns pad' },
     h('button', { class: 'btn primary', onclick: newInspection }, '＋ New inspection'),
@@ -174,7 +177,7 @@ function cardMenu(ins) {
     h('button', { onclick: () => { s.close(); openInspection(ins.id); } }, 'Open'),
     h('button', { onclick: async () => { s.close(); await editDetails(ins, true); } }, 'Rename / edit details'),
     h('button', { onclick: async () => { s.close(); await duplicate(ins); } }, 'Duplicate'),
-    h('button', { onclick: async () => { s.close(); const pr = progress('Packaging'); try { const b = await exportZip(ins, (i, n) => pr.set(i, n)); pr.done(); await deliver(b, `${safeName(ins.name)}.spancheck.zip`); } catch (e) { pr.done(); toast(e.message); } } }, 'Export package (.zip)'),
+    h('button', { onclick: async () => { s.close(); const pr = progress('Packaging'); try { const b = await exportZip(ins, (i, n) => pr.set(i, n)); pr.done(); await deliver(b, `${safeName(ins.name)}.survport.zip`); } catch (e) { pr.done(); toast(e.message); } } }, 'Export package (.zip)'),
     h('button', { class: 'danger-txt', onclick: async () => { s.close(); if (await confirmBox(`Delete “${ins.name}” and all its photos and plans from this device? This cannot be undone.`)) { await deleteInspection(ins.id); renderGallery(); } } }, 'Delete')));
 }
 
@@ -208,7 +211,7 @@ function editDetails(ins, saveAfter, isNew = false) {
       field('inspector', 'Inspector', h('input', { class: 'inp' })),
       field('date', 'Inspection date', h('input', { class: 'inp', type: 'date' })),
       field('notes', 'Notes', h('textarea', { class: 'inp', rows: 3 })),
-      h('button', { class: 'btn primary wide', type: 'submit' }, isNew ? 'Create' : 'Save')), { onClose: () => { if (!done) res(false); } });
+      h('button', { class: 'btn primary wide', type: 'submit' }, isNew ? 'Create' : 'Save')), { backdrop: false, onClose: () => { if (!done) res(false); } });
   });
 }
 
@@ -240,7 +243,7 @@ async function openSettings() {
   const mb = (b) => (b / 1048576).toFixed(1) + ' MB';
   sheet('Storage & privacy', h('div', { class: 'prose' },
     h('p', {}, h('b', {}, 'Where your data lives: '), app.storeInfo.backend + '. Photos, plans and records are written as files in a private folder that only this app can read. Nothing is uploaded.'),
-    h('p', {}, h('b', {}, 'Protected from automatic clean-up: '), app.storeInfo.persisted ? 'Yes' : 'Not granted yet – add SpanCheck to your Home Screen and open it from there.'),
+    h('p', {}, h('b', {}, 'Protected from automatic clean-up: '), app.storeInfo.persisted ? 'Yes' : 'Not granted yet – add Survport to your Home Screen and open it from there.'),
     est ? h('p', {}, h('b', {}, 'Space used: '), `${mb(est.usage || 0)} of ${mb(est.quota || 0)} available`) : null,
     h('p', {}, h('b', {}, 'Network: '), 'The app works fully offline. The only optional connection is the online base map on the Map tab, which is off unless you switch it on.'),
     h('p', { class: 'muted' }, 'Tip: export a .zip package regularly as a backup. Deleting the app from your Home Screen, or clearing Safari website data, removes its folder.')));
@@ -259,8 +262,11 @@ async function openInspection(id) {
 
 function renderInspection() {
   const root = $('#app');
-  root.innerHTML = '';
   const ins = app.ins;
+  const key = ins.id + app.tab, prev = $('#tab');
+  const keepTop = prev && app.scrollKey === key ? prev.scrollTop : 0;
+  app.scrollKey = key;
+  root.innerHTML = '';
   const tabs = [['photos', 'Photos', '▦'], ['plans', 'Plans', '⌗'], ['map', 'Map', '◎'], ['export', 'Export', '⇪']];
   root.append(
     h('header', { class: 'bar' },
@@ -270,6 +276,7 @@ function renderInspection() {
     h('main', { class: 'scroll', id: 'tab' }),
     h('nav', { class: 'tabs' }, tabs.map(([k, l, ic]) => h('button', { class: app.tab === k ? 'on' : '', onclick: () => { app.tab = k; renderInspection(); } }, h('i', {}, ic), l))));
   ({ photos: tabPhotos, plans: tabPlans, map: tabMap, export: tabExport })[app.tab]($('#tab'));
+  $('#tab').scrollTop = keepTop;
 }
 
 /* ---------------- Photos tab ---------------- */
@@ -314,7 +321,7 @@ async function addPhotos(camera) {
   if (!files.length) return;
   const ins = app.ins;
   const pr = progress('Adding photos');
-  let fallback;
+  let fallback, added = 0;
   try {
     for (let i = 0; i < files.length; i++) {
       pr.set(i + 1, files.length);
@@ -325,7 +332,7 @@ async function addPhotos(camera) {
       if (!gps && settings.get('gpsFallback', true)) {
         // Camera captures on iPhone usually arrive without location metadata,
         // so take the device's current position instead.
-        if (fallback === undefined) fallback = await currentPosition();
+        if (fallback === undefined) { pr.set(i + 1, files.length, '– getting location…'); fallback = await currentPosition(); }
         gps = fallback;
       }
       const taken = (await readTaken(file)) || (camera ? Date.now() : file.lastModified) || Date.now();
@@ -336,12 +343,14 @@ async function addPhotos(camera) {
         element: ins.lastElement || '', defect: '', caption: '',
         lat: gps ? gps.lat : null, lng: gps ? gps.lng : null, gpsSource: gps ? (gps.acc ? 'device' : 'photo') : null,
         takenAt: taken, plan: null, fromCamera: camera || undefined });
+      await save();
+      added++;
     }
-    await save();
   } catch (e) { toast('Could not add photo: ' + e.message, 4000); }
   pr.done();
   renderInspection();
-  if (files.length === 1) editPhoto(ins.photos.length - 1);
+  if (added === 1 && files.length === 1) editPhoto(ins.photos.length - 1, { justAdded: true });
+  else if (added) toast(`${added} photo${added === 1 ? '' : 's'} added`);
 }
 
 async function sortByElement() {
@@ -351,18 +360,24 @@ async function sortByElement() {
   await save(); renderInspection();
 }
 
-async function editPhoto(index) {
+async function editPhoto(index, { justAdded = false } = {}) {
   const ins = app.ins;
   let i = index;
   let fullUrl = '';
+  let commit = async () => {};
+  const addedId = justAdded ? ins.photos[index].id : null;
   const body = h('div', { class: 'pedit' });
-  const s = sheet('', body, { full: true, onClose: () => { fullUrl && URL.revokeObjectURL(fullUrl); renderInspection(); } });
+  const foot = h('div', { class: 'sheet-ft' });
+  const s = sheet('', body, { full: true, backdrop: false, footer: foot, onClose: async () => { await commit(); fullUrl && URL.revokeObjectURL(fullUrl); renderInspection(); } });
   const titleEl = $('.sheet-hd h2', s.el);
 
   async function draw() {
     const p = ins.photos[i];
-    titleEl.textContent = `Photo ${i + 1} of ${ins.photos.length}`;
+    const isNew = p.id === addedId;
+    titleEl.textContent = isNew ? `New photo ${i + 1}` : `Photo ${i + 1} of ${ins.photos.length}`;
     body.innerHTML = '';
+    foot.innerHTML = '';
+    if (isNew) body.append(h('div', { class: 'notice' }, `✓ Photo ${i + 1} is saved in this inspection. Add the details below; they save as you go. Tap Done when finished.`));
     const imgEl = h('img', { class: 'pfull', alt: `Photo ${i + 1}` });
     body.append(h('div', { class: 'pfull-wrap' }, imgEl));
     if (fullUrl) URL.revokeObjectURL(fullUrl);
@@ -371,13 +386,19 @@ async function editPhoto(index) {
     const elSel = elementSelect(p.element);
     const dfSel = defectSelect(p.defect);
     const cap = h('textarea', { class: 'inp', rows: 3, placeholder: 'Describe what the photo shows…' }); cap.value = p.caption || '';
-    const commit = async () => { p.element = elSel.value; p.defect = dfSel.value; p.caption = cap.value.trim(); if (p.element) ins.lastElement = p.element; await save(); };
+    commit = async () => { clearTimeout(capTimer); p.element = elSel.value; p.defect = dfSel.value; p.caption = cap.value.trim(); if (p.element) ins.lastElement = p.element; await save(); };
+    let capTimer = 0;
     elSel.onchange = commit; dfSel.onchange = commit; cap.onchange = commit;
+    cap.oninput = () => { clearTimeout(capTimer); capTimer = setTimeout(commit, 800); };
+    const done = () => { const n = i + 1; s.close(); toast(`Photo ${n} saved`); };
+    foot.append(
+      isNew && p.fromCamera ? h('button', { class: 'btn', onclick: () => { s.close(); addPhotos(true); } }, '📷 Take next') : null,
+      h('button', { class: 'btn primary', onclick: done }, 'Done'));
 
     const gpsTxt = p.lat != null ? `${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}${p.gpsSource === 'device' ? ' (device location)' : ''}` : 'No location';
     const planTxt = p.plan ? `On “${(ins.plans.find(x => x.id === p.plan.planId) || {}).name || 'plan'}”${p.plan.angle == null ? '' : ` · facing ${Math.round(p.plan.angle)}°`}` : 'Not marked on a plan';
 
-    if (p.fromCamera && !p.savedToPhotos) body.append(h('button', { class: 'btn primary wide save-photos', onclick: async () => { await commit(); if (await saveToPhotos(ins, [p])) draw(); } },
+    if (p.fromCamera && !p.savedToPhotos) body.append(h('button', { class: 'btn wide save-photos', onclick: async () => { await commit(); if (await saveToPhotos(ins, [p])) draw(); } },
       'Save to Photos'), h('p', { class: 'muted small' }, 'Then choose “Save Image” in the share sheet.'));
     body.append(
       h('div', { class: 'nav2' },
@@ -727,7 +748,7 @@ function tabExport(el) {
       h('button', { class: 'btn primary wide', onclick: () => run('Building viewer', (p) => exportHtmlViewer(ins, { quality: htmlQ.get(), maxPx: 1600 }, p), `${base}_Plan_Viewer.html`) }, 'Create viewer')),
     card('Backup package', 'Full .zip of this inspection (original photos, plans, all records). Import it on another device or keep it as a backup.',
       null,
-      h('button', { class: 'btn wide', onclick: () => run('Packaging', (p) => exportZip(ins, p), `${base}.spancheck.zip`) }, 'Export package')),
+      h('button', { class: 'btn wide', onclick: () => run('Packaging', (p) => exportZip(ins, p), `${base}.survport.zip`) }, 'Export package')),
     h('p', { class: 'muted small' }, 'Exports are created on this device and only leave it when you choose where to share or save them.')));
 }
 
@@ -736,7 +757,7 @@ function tabExport(el) {
   try {
     app.storeInfo = await initStore();
   } catch (e) {
-    $('#app').innerHTML = `<div class="empty"><h3>Storage unavailable</h3><p>${e.message}. Private browsing mode blocks on-device storage – open SpanCheck in a normal Safari tab or from your Home Screen.</p></div>`;
+    $('#app').innerHTML = `<div class="empty"><h3>Storage unavailable</h3><p>${e.message}. Private browsing mode blocks on-device storage – open Survport in a normal Safari tab or from your Home Screen.</p></div>`;
     return;
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
