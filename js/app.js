@@ -73,6 +73,25 @@ async function deliver(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
+// iOS gives web apps no direct write access to the Photos library; the share
+// sheet's "Save Image" is the only route, and it must start from a tap.
+async function saveToPhotos(ins, photos) {
+  const files = [];
+  for (const p of photos) {
+    const f = await readFile(`${insDir(ins.id)}/photos/${p.file}`);
+    if (!f) continue;
+    const ext = p.file.split('.').pop();
+    files.push(new File([f], `${safeName(ins.name)} ${ins.photos.indexOf(p) + 1}.${ext}`, { type: ext === 'jpg' ? 'image/jpeg' : `image/${ext}` }));
+  }
+  if (!files.length) return false;
+  if (!(navigator.canShare && navigator.canShare({ files }))) { toast('Saving to Photos is not supported in this browser', 4000); return false; }
+  try { await navigator.share({ files }); }
+  catch (e) { if (e.name !== 'AbortError') toast('Could not open the share sheet: ' + e.message, 4000); return false; }
+  photos.forEach(p => { p.savedToPhotos = true; });
+  await saveInspection(ins);
+  return true;
+}
+
 function pickFiles({ accept, multiple = false, capture = null }) {
   return new Promise(res => {
     const i = h('input', { type: 'file', accept, multiple, capture, style: { display: 'none' } });
@@ -260,6 +279,9 @@ async function tabPhotos(el) {
     h('button', { class: 'btn primary', onclick: () => addPhotos(true) }, '📷 Camera'),
     h('button', { class: 'btn', onclick: () => addPhotos(false) }, 'Library'),
     ins.photos.length > 1 ? h('button', { class: 'btn', onclick: sortByElement, title: 'Renumber photos in element order' }, 'Sort') : null));
+  const unsaved = ins.photos.filter(p => p.fromCamera && !p.savedToPhotos);
+  if (unsaved.length) el.append(h('div', { class: 'pad' }, h('button', { class: 'btn wide save-photos', onclick: async () => { if (await saveToPhotos(ins, unsaved)) renderInspection(); } },
+    `Save ${unsaved.length} camera photo${unsaved.length === 1 ? '' : 's'} to Photos`)));
   if (!ins.photos.length) {
     el.append(h('div', { class: 'empty' }, h('h3', {}, 'No photos yet'), h('p', {}, 'Take photos with the camera or import them from your library. GPS is read from each photo automatically.')));
     return;
@@ -313,7 +335,7 @@ async function addPhotos(camera) {
       ins.photos.push({ id, file: `${id}.${ext}`, thumb: `${id}.jpg`, w: th.w0, h: th.h0,
         element: ins.lastElement || '', defect: '', caption: '',
         lat: gps ? gps.lat : null, lng: gps ? gps.lng : null, gpsSource: gps ? (gps.acc ? 'device' : 'photo') : null,
-        takenAt: taken, plan: null });
+        takenAt: taken, plan: null, fromCamera: camera || undefined });
     }
     await save();
   } catch (e) { toast('Could not add photo: ' + e.message, 4000); }
@@ -355,6 +377,8 @@ async function editPhoto(index) {
     const gpsTxt = p.lat != null ? `${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}${p.gpsSource === 'device' ? ' (device location)' : ''}` : 'No location';
     const planTxt = p.plan ? `On “${(ins.plans.find(x => x.id === p.plan.planId) || {}).name || 'plan'}”${p.plan.angle == null ? '' : ` · facing ${Math.round(p.plan.angle)}°`}` : 'Not marked on a plan';
 
+    if (p.fromCamera && !p.savedToPhotos) body.append(h('button', { class: 'btn primary wide save-photos', onclick: async () => { await commit(); if (await saveToPhotos(ins, [p])) draw(); } },
+      'Save to Photos'), h('p', { class: 'muted small' }, 'Then choose “Save Image” in the share sheet.'));
     body.append(
       h('div', { class: 'nav2' },
         h('button', { class: 'btn', disabled: i === 0, onclick: async () => { await commit(); i--; draw(); } }, '‹ Previous'),
@@ -370,6 +394,8 @@ async function editPhoto(index) {
           ins.plans.length ? h('button', { class: 'link', onclick: async () => { await commit(); s.close(); openPlanEditor(p.plan ? p.plan.planId : ins.plans[0].id, p.id); } }, p.plan ? 'Move' : 'Mark on plan') : h('span', { class: 'muted' }, ' – add a plan first'),
           p.plan ? h('button', { class: 'link', onclick: async () => { p.plan = null; await commit(); draw(); } }, 'Remove') : null)),
         h('div', { class: 'fld' }, h('span', {}, 'Taken'), h('div', { class: 'kv' }, fmtDate(p.takenAt))),
+        h('div', { class: 'fld' }, h('span', {}, 'Photos app'), h('div', { class: 'kv' }, p.savedToPhotos ? 'Saved' : 'Not saved',
+          h('button', { class: 'link', onclick: async () => { await commit(); if (await saveToPhotos(ins, [p])) draw(); } }, p.savedToPhotos ? 'Save again' : 'Save to Photos'))),
         h('div', { class: 'row-btns' },
           h('button', { class: 'btn', disabled: i === 0, onclick: async () => { await commit(); [ins.photos[i - 1], ins.photos[i]] = [ins.photos[i], ins.photos[i - 1]]; i--; await save(); draw(); } }, '↑ Move earlier'),
           h('button', { class: 'btn', disabled: i === ins.photos.length - 1, onclick: async () => { await commit(); [ins.photos[i + 1], ins.photos[i]] = [ins.photos[i], ins.photos[i + 1]]; i++; await save(); draw(); } }, '↓ Move later')),

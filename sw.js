@@ -1,6 +1,6 @@
 // Offline cache for the app shell. User data is never cached here – it lives
 // in the private on-device folder (OPFS) managed by js/store.js.
-const VERSION = 'spancheck-v1';
+const VERSION = 'spancheck-v2';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/store.js', 'js/data.js', 'js/img.js', 'js/markers.js', 'js/exporters.js',

@@ -8,6 +8,10 @@ accounts, servers, analytics or third-party SDKs.
 ## Features
 - Camera capture or library import; GPS read from photo metadata, with the
   phone's location used as a fallback for camera shots
+- Camera shots can be copied to the iPhone Photos app: tap **Save to Photos**
+  after taking one (or the "Save N camera photos to Photos" button on the
+  Photos tab), then **Save Image** in the share sheet. iOS doesn't let web
+  apps write to Photos without that tap, so it can't happen automatically
 - 43 bridge elements (CS 450 / Inspection Manual element breakdown) and 13
   defect categories plus a "record only" option; photo list grouped by element
 - Plan drawings from images or PDFs (each PDF page becomes a plan); pinch-zoom,
