@@ -6,6 +6,9 @@
 //   inspections/<id>/thumbs/<photoId>.jpg      (small preview)
 //   inspections/<id>/plans/<planId>.png        (plan drawing page)
 // Fallback (very old browsers only): IndexedDB with the same path keys.
+//
+// Everything sits under survport/ (and in its own IndexedDB database) so this
+// app never sees or changes another app's data on the same origin.
 
 let backend = null;
 
@@ -98,8 +101,7 @@ const idb = {
   db: null,
   init() {
     return new Promise((res, rej) => {
-      // Original database name kept so existing data still loads.
-      const r = indexedDB.open('spancheck', 1);
+      const r = indexedDB.open('survport', 1);
       r.onupgradeneeded = () => r.result.createObjectStore('files');
       r.onsuccess = () => { this.db = r.result; res(); };
       r.onerror = () => rej(r.error);
@@ -139,10 +141,11 @@ export async function initStore() {
   return { backend: backend.name, persisted };
 }
 
-export const writeFile = (p, b) => backend.write(p, b);
-export const readFile = (p) => backend.read(p);
-export const removePath = (p) => backend.remove(p);
-export const listDir = (p) => backend.list(p);
+const NS = 'survport/';
+export const writeFile = (p, b) => backend.write(NS + p, b);
+export const readFile = (p) => backend.read(NS + p);
+export const removePath = (p) => backend.remove(NS + p);
+export const listDir = (p) => backend.list(NS + p);
 
 export async function writeJSON(path, obj) {
   await writeFile(path, new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' }));

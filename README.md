@@ -19,6 +19,8 @@ accounts, servers, analytics or third-party SDKs.
 - Plan drawings from images or PDFs (each PDF page becomes a plan); pinch-zoom,
   tap to place a numbered marker, drag to set the direction you were facing
 - Map of geotagged photos (offline grid by default; online base map is opt-in)
+- PDF and Word reports include each plan with its numbered markers and a
+  marker key (switch off on the Export tab), and each photo caption names its plan
 - Exports: PDF report (1/2/4/6 per page + quality slider), Word .docx with
   auto-numbering captions, annotated plans PDF with marker key, single-file
   interactive HTML plan viewer (search by photo number), .zip backup package
@@ -26,11 +28,13 @@ accounts, servers, analytics or third-party SDKs.
 - Light and dark mode; works fully offline after first load
 
 ## Folder layout on the device
+Everything lives under its own `survport/` folder, separate from any other app
+served from the same site (e.g. another GitHub Pages repo on the same account).
 ```
-inspections/<id>/inspection.json   all records
-inspections/<id>/photos/           original photo files, untouched
-inspections/<id>/thumbs/           small previews
-inspections/<id>/plans/            plan drawing pages
+survport/inspections/<id>/inspection.json   all records
+survport/inspections/<id>/photos/           original photo files, untouched
+survport/inspections/<id>/thumbs/           small previews
+survport/inspections/<id>/plans/            plan drawing pages
 ```
 
 ## Putting it on your iPhone

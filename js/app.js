@@ -115,8 +115,8 @@ function defectSelect(value) {
 /* ---------------- state ---------------- */
 const app = { ins: null, tab: 'photos', urls: new Map(), storeInfo: null };
 const settings = {
-  get(k, d) { try { const v = localStorage.getItem('sc.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
-  set(k, v) { try { localStorage.setItem('sc.' + k, JSON.stringify(v)); } catch {} },
+  get(k, d) { try { const v = localStorage.getItem('survport.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('survport.' + k, JSON.stringify(v)); } catch {} },
 };
 
 async function thumbURL(p) {
@@ -729,17 +729,22 @@ function tabExport(el) {
   const wordSize = h('select', { class: 'inp sm' }, [[8, 'Small (8 cm wide)'], [12, 'Medium (12 cm)'], [16, 'Large (16 cm)']].map(([v, l]) => h('option', { value: v, selected: v === settings.get('docW', 12) }, l)));
   wordSize.onchange = () => settings.set('docW', +wordSize.value);
   const docQ = q('docQ', 0.7);
+  const plansOpt = () => {
+    const c = h('input', { type: 'checkbox', checked: settings.get('rptPlans', true), disabled: !ins.plans.length, onchange: () => settings.set('rptPlans', c.checked) });
+    return { el: h('label', { class: 'switch' }, c, h('span', {}, ins.plans.length ? 'Include marked-up plans' : 'Include plans (none added yet)')), get: () => c.checked && ins.plans.length > 0 };
+  };
+  const pdfPlans = plansOpt(), docPlans = plansOpt();
   const htmlQ = q('htmlQ', 0.7);
 
   const card = (title, desc, controls, btn) => h('section', { class: 'xcard' }, h('h3', {}, title), h('p', { class: 'muted small' }, desc), controls, btn);
 
   el.append(h('div', { class: 'pad' },
-    card('PDF photo report', 'Cover sheet plus captioned photos, in photo-number order.',
-      h('div', { class: 'form' }, perPage, pdfQ.el),
-      h('button', { class: 'btn primary wide', onclick: () => run('Building PDF', (p) => exportPdfReport(ins, { perPage: +perPage.value, quality: pdfQ.get(), maxPx: sizeToPx[perPage.value] }, p), `${base}_Photo_Report.pdf`) }, 'Create PDF')),
+    card('PDF photo report', 'Cover sheet, marked-up plans, then captioned photos in photo-number order.',
+      h('div', { class: 'form' }, perPage, pdfQ.el, pdfPlans.el),
+      h('button', { class: 'btn primary wide', onclick: () => run('Building PDF', (p) => exportPdfReport(ins, { perPage: +perPage.value, quality: pdfQ.get(), maxPx: sizeToPx[perPage.value], plans: pdfPlans.get() }, p), `${base}_Photo_Report.pdf`) }, 'Create PDF')),
     card('Word report', 'Editable .docx. Captions use Word numbering, so they renumber if you reorder photos in Word (select all, then F9).',
-      h('div', { class: 'form' }, wordSize, docQ.el),
-      h('button', { class: 'btn primary wide', onclick: () => run('Building Word report', (p) => exportDocx(ins, { widthCm: +wordSize.value, quality: docQ.get(), maxPx: +wordSize.value * 110 }, p), `${base}_Photo_Report.docx`) }, 'Create Word document')),
+      h('div', { class: 'form' }, wordSize, docQ.el, docPlans.el),
+      h('button', { class: 'btn primary wide', onclick: () => run('Building Word report', (p) => exportDocx(ins, { widthCm: +wordSize.value, quality: docQ.get(), maxPx: +wordSize.value * 110, plans: docPlans.get() }, p), `${base}_Photo_Report.docx`) }, 'Create Word document')),
     card('Annotated plans PDF', `Every plan with its numbered direction markers, plus a marker key. ${ins.plans.length} plan${ins.plans.length === 1 ? '' : 's'}.`,
       null,
       h('button', { class: 'btn primary wide', disabled: !ins.plans.length, onclick: () => run('Drawing plans', (p) => exportPlanPdf(ins, p), `${base}_Plans.pdf`) }, 'Create plans PDF')),

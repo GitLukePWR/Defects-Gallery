@@ -29,6 +29,8 @@ export async function exportPdfReport(ins, opts, progress) {
   const W = 210, H = 297, M = 14;
   coverPage(doc, ins, W, M);
 
+  if (opts.plans) await pdfPlanPages(doc, ins, opts.quality);
+
   const per = opts.perPage;
   const cols = per >= 4 ? 2 : 1;
   const rows = Math.ceil(per / cols);
@@ -39,7 +41,7 @@ export async function exportPdfReport(ins, opts, progress) {
   for (let i = 0; i < ins.photos.length; i++) {
     progress && progress(i + 1, ins.photos.length);
     const slot = i % per;
-    if (slot === 0) { doc.addPage(); pageHeader(doc, ins, W, M); }
+    if (slot === 0) { doc.addPage('a4', 'portrait'); pageHeader(doc, ins, W, M); }
     const p = ins.photos[i];
     const c = slot % cols, r = Math.floor(slot / cols);
     const x = M + c * (cellW + 6), y = M + headerH + r * (cellH + 6);
@@ -53,11 +55,37 @@ export async function exportPdfReport(ins, opts, progress) {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(per >= 6 ? 8 : 9.5); doc.setTextColor(20);
     doc.text(photoTitle(p, i + 1), x, y + boxH + 4.5, { maxWidth: cellW });
     doc.setFont('helvetica', 'normal'); doc.setFontSize(per >= 6 ? 7 : 8.5); doc.setTextColor(60);
-    const meta = [p.caption, [fmtDate(p.takenAt), fmtGps(p)].filter(Boolean).join('  ·  ')].filter(Boolean).join('\n');
+    const meta = [p.caption, [fmtDate(p.takenAt), fmtGps(p), opts.plans && planRef(ins, p)].filter(Boolean).join('  ·  ')].filter(Boolean).join('\n');
     doc.text(doc.splitTextToSize(meta, cellW).slice(0, 3), x, y + boxH + 8.5);
   }
-  pageNumbers(doc, W, H);
+  pageNumbers(doc);
   return doc.output('blob');
+}
+
+const planRef = (ins, p) => { const pl = p.plan && ins.plans.find(x => x.id === p.plan.planId); return pl ? `Plan: ${pl.name}` : ''; };
+const markedOn = (ins, plan) => ins.photos.map((p, i) => ({ p, n: i + 1 })).filter(o => o.p.plan && o.p.plan.planId === plan.id);
+
+// One A4 page per plan (landscape for wide drawings) with its markers and a key.
+async function pdfPlanPages(doc, ins, quality) {
+  for (const plan of ins.plans) {
+    const r = await renderPlan(ins, plan, 3200, Math.max(quality, 0.8));
+    if (!r) continue;
+    const land = r.w >= r.h;
+    doc.addPage('a4', land ? 'landscape' : 'portrait');
+    const W = land ? 297 : 210, H = land ? 210 : 297, M = 14;
+    pageHeader(doc, ins, W, M);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(20);
+    doc.text(`Plan – ${plan.name}`, M, M + 12);
+    const marked = markedOn(ins, plan);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(60);
+    const key = marked.length ? doc.splitTextToSize('Markers: ' + marked.map(({ p, n }) => `${n} ${p.element || ''}`.trim()).join(';  '), W - 2 * M).slice(0, 4) : ['No photos marked on this plan'];
+    const keyH = key.length * 3.8 + 2;
+    const top = M + 16, availH = H - top - M - 6 - keyH, availW = W - 2 * M;
+    const s = Math.min(availW / r.w, availH / r.h);
+    doc.addImage(await u8(r.blob), 'JPEG', M + (availW - r.w * s) / 2, top, r.w * s, r.h * s, undefined, 'FAST');
+    doc.setDrawColor(200); doc.rect(M + (availW - r.w * s) / 2, top, r.w * s, r.h * s);
+    doc.text(key, M, top + r.h * s + 6);
+  }
 }
 
 function coverPage(doc, ins, W, M) {
@@ -91,10 +119,11 @@ function pageHeader(doc, ins, W, M) {
   doc.text([ins.ref, ins.date].filter(Boolean).join('  ·  '), W - M, M + 3, { align: 'right' });
   doc.setDrawColor(210); doc.line(M, M + 5.5, W - M, M + 5.5);
 }
-function pageNumbers(doc, W, H) {
+function pageNumbers(doc) {
   const n = doc.getNumberOfPages();
   for (let i = 1; i <= n; i++) {
     doc.setPage(i); doc.setFontSize(8); doc.setTextColor(140);
+    const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
     doc.text(`Page ${i} of ${n}`, W / 2, H - 7, { align: 'center' });
   }
 }
@@ -117,6 +146,27 @@ export async function exportDocx(ins, opts, progress) {
       info.map(([k, v]) => `<w:tr><w:tc><w:tcPr><w:shd w:val="clear" w:color="auto" w:fill="E8EEF4"/></w:tcPr>${P(k, null, true)}</w:tc><w:tc>${P(v)}</w:tc></w:tr>`).join('') + `</w:tbl>`);
   }
   if (ins.notes) { body.push(P('Notes', 'Heading2')); ins.notes.split('\n').forEach(l => body.push(P(l))); }
+  const picture = async (blob, name, id, cx, cy) => {
+    zip.file(`word/media/${name}`, await blob.arrayBuffer());
+    const rid = `rId_${name.replace('.', '_')}`;
+    rels.push(`<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${name}"/>`);
+    return `<w:p><w:pPr><w:keepNext/><w:jc w:val="center"/><w:spacing w:before="240"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${id}" name="${name}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${id}" name="${name}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+  };
+
+  if (opts.plans && ins.plans.length) {
+    body.push(P('Plans', 'Heading1'));
+    const maxW = 17 * 360000, maxH = 22 * 360000; // A4 text area with 2 cm margins
+    for (let k = 0; k < ins.plans.length; k++) {
+      const plan = ins.plans[k];
+      const r = await renderPlan(ins, plan, 3000, Math.max(opts.quality, 0.8));
+      if (!r) continue;
+      const s = Math.min(maxW / r.w, maxH / r.h);
+      body.push(await picture(r.blob, `plan${k + 1}.jpg`, 10000 + k, Math.round(r.w * s), Math.round(r.h * s)));
+      body.push(`<w:p><w:pPr><w:pStyle w:val="Caption"/><w:jc w:val="center"/></w:pPr><w:r><w:t xml:space="preserve">Plan </w:t></w:r><w:fldSimple w:instr=" SEQ Plan \\* ARABIC "><w:r><w:t>${k + 1}</w:t></w:r></w:fldSimple><w:r><w:t xml:space="preserve">${esc(': ' + plan.name)}</w:t></w:r></w:p>`);
+      const marked = markedOn(ins, plan);
+      body.push(`<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="120"/></w:pPr><w:r><w:rPr><w:color w:val="555555"/><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">${esc(marked.length ? 'Markers: ' + marked.map(({ p, n }) => `${n} ${p.element || ''}`.trim()).join('; ') : 'No photos marked on this plan')}</w:t></w:r></w:p>`);
+    }
+  }
   body.push(P('Photographs', 'Heading1'));
 
   const cx = Math.round(opts.widthCm * 360000);
@@ -124,17 +174,9 @@ export async function exportDocx(ins, opts, progress) {
     progress && progress(i + 1, ins.photos.length);
     const p = ins.photos[i];
     const img = await photoJpeg(ins, p, opts.maxPx, opts.quality);
-    if (img) {
-      const name = `image${i + 1}.jpg`;
-      zip.file(`word/media/${name}`, await img.blob.arrayBuffer());
-      const rid = `rIdImg${i + 1}`;
-      rels.push(`<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${name}"/>`);
-      const cy = Math.round(cx * img.h / img.w);
-      const id = i + 1;
-      body.push(`<w:p><w:pPr><w:keepNext/><w:jc w:val="center"/><w:spacing w:before="240"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${id}" name="Photo ${id}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${id}" name="${name}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`);
-    }
+    if (img) body.push(await picture(img.blob, `image${i + 1}.jpg`, i + 1, cx, Math.round(cx * img.h / img.w)));
     const bits = [p.element, p.defect && p.defect !== 'No defect / record only' ? p.defect : null].filter(Boolean).join(' – ');
-    const meta = [p.caption, fmtDate(p.takenAt), fmtGps(p) && 'GPS ' + fmtGps(p)].filter(Boolean).join('. ');
+    const meta = [p.caption, fmtDate(p.takenAt), fmtGps(p) && 'GPS ' + fmtGps(p), opts.plans && planRef(ins, p)].filter(Boolean).join('. ');
     body.push(`<w:p><w:pPr><w:pStyle w:val="Caption"/><w:jc w:val="center"/></w:pPr><w:r><w:t xml:space="preserve">Photo </w:t></w:r><w:fldSimple w:instr=" SEQ Photo \\* ARABIC "><w:r><w:t>${i + 1}</w:t></w:r></w:fldSimple><w:r><w:t xml:space="preserve">${esc(bits ? ': ' + bits : '')}</w:t></w:r></w:p>`);
     if (meta) body.push(`<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="120"/></w:pPr><w:r><w:rPr><w:color w:val="555555"/><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">${esc(meta)}</w:t></w:r></w:p>`);
   }
