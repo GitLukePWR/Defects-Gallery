@@ -3,7 +3,7 @@
 // Prefixed so this app never deletes another app's cache on the same origin
 // (e.g. two GitHub Pages sites under one account share an origin).
 const PREFIX = 'survport-';
-const VERSION = PREFIX + 'v5';
+const VERSION = PREFIX + 'v6';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/store.js', 'js/data.js', 'js/img.js', 'js/markers.js', 'js/exporters.js',

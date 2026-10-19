@@ -429,7 +429,7 @@ async function editPhoto(index, { justAdded = false } = {}) {
           h('button', { class: 'link', onclick: async () => { const g = await currentPosition(); if (!g) return toast('Location unavailable'); p.lat = g.lat; p.lng = g.lng; p.gpsSource = 'device'; await commit(); draw(); } }, 'Use current'),
           p.lat != null ? h('button', { class: 'link', onclick: async () => { p.lat = p.lng = null; p.gpsSource = null; await commit(); draw(); } }, 'Clear') : null)),
         h('div', { class: 'fld' }, h('span', {}, 'Plan location'), h('div', { class: 'kv' }, planTxt,
-          ins.plans.length ? h('button', { class: 'link', onclick: async () => { await commit(); s.close(); openPlanEditor(p.plan ? p.plan.planId : ins.plans[0].id, p.id); } }, p.plan ? 'Move' : 'Mark on plan') : h('span', { class: 'muted' }, ' – add a plan first'),
+          ins.plans.length ? h('button', { class: 'link', onclick: async () => { await commit(); s.close(); openPlanEditor(p.plan ? p.plan.planId : ins.plans[0].id, p.id, { backToPhoto: true }); } }, p.plan ? 'Move' : 'Mark on plan') : h('span', { class: 'muted' }, ' – add a plan first'),
           p.plan ? h('button', { class: 'link', onclick: async () => { p.plan = null; await commit(); draw(); } }, 'Remove') : null)),
         h('div', { class: 'fld' }, h('span', {}, 'Taken'), h('div', { class: 'kv' }, fmtDate(p.takenAt))),
         h('div', { class: 'fld' }, h('span', {}, 'Photos app'), h('div', { class: 'kv' }, p.savedToPhotos ? 'Saved' : 'Not saved',
@@ -511,7 +511,8 @@ async function addPlan() {
 }
 
 /* ---------------- Plan editor (pan, pinch-zoom, place markers) ---------------- */
-async function openPlanEditor(planId, placePhotoId = null) {
+// backToPhoto: opened from a photo's form, so finishing returns to that form.
+async function openPlanEditor(planId, placePhotoId = null, { backToPhoto = false } = {}) {
   const ins = app.ins;
   let plan = ins.plans.find(p => p.id === planId);
   if (!plan) return;
@@ -529,13 +530,16 @@ async function openPlanEditor(planId, placePhotoId = null) {
   const panel = h('div', { class: 'ppanel' });
   const ov = h('div', { class: 'editor' },
     h('header', { class: 'bar' },
-      h('button', { class: 'icon-btn', 'aria-label': 'Done', onclick: close }, '‹'),
+      backToPhoto ? h('button', { class: 'btn sm', onclick: close }, '‹ Photo') : h('button', { class: 'icon-btn', 'aria-label': 'Done', onclick: close }, '‹'),
       planSel,
       h('button', { class: 'icon-btn', 'aria-label': 'Fit', onclick: fit }, '⤢')),
     wrap, hint, panel);
   document.body.append(ov);
 
-  function close() { planUrl && URL.revokeObjectURL(planUrl); ov.remove(); renderInspection(); }
+  function close() {
+    planUrl && URL.revokeObjectURL(planUrl); ov.remove(); renderInspection();
+    if (backToPhoto) { const i = ins.photos.findIndex(p => p.id === placePhotoId); if (i >= 0) editPhoto(i); }
+  }
 
   async function loadPlan() {
     if (planUrl) URL.revokeObjectURL(planUrl);
@@ -597,7 +601,8 @@ async function openPlanEditor(planId, placePhotoId = null) {
           h('button', { class: 'btn sm', onclick: () => { placingId = sel.id; drawPanel(); } }, 'Re-place'),
           h('button', { class: 'btn sm danger', onclick: async () => { sel.plan = null; selectedId = null; await save(); drawMarkers(); drawPanel(); } }, 'Remove')),
         h('div', { class: 'row-btns' }, h('span', {}, 'Direction'), ang, angLbl,
-          h('button', { class: 'link', onclick: async () => { sel.plan.angle = null; await save(); drawMarkers(); drawPanel(); } }, 'None')));
+          h('button', { class: 'link', onclick: async () => { sel.plan.angle = null; await save(); drawMarkers(); drawPanel(); } }, 'None')),
+        backToPhoto && sel.id === placePhotoId ? h('button', { class: 'btn primary wide', onclick: close }, `Done – back to photo ${n}`) : null);
       return;
     }
     const unplaced = ins.photos.map((p, i) => ({ p, n: i + 1 })).filter(o => !o.p.plan);
